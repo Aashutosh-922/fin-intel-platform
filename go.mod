@@ -1,6 +1,8 @@
 module github.com/Aashutosh-922/fin-intel-platform
 
-go 1.13
+go 1.21
+
+toolchain go1.22.6
 
 require (
 	github.com/google/uuid v1.6.0
