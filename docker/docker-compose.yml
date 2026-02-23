@@ -1,0 +1,200 @@
+# services:
+#   zookeeper:
+#     image: zookeeper:3.8
+#     ports:
+#       - "2181:2181"
+
+# kafka:
+#   image: confluentinc/cp-kafka:7.5.0
+#   depends_on:
+#       - zookeeper
+#   ports:
+#       - "9092:9092"
+#   environment:
+#   KAFKA_BROKER_ID: 1
+#   KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+#   KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+#   KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+#   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+#   KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+#   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+
+
+#   postgres:
+#     image: postgres:15
+#     environment:
+#       POSTGRES_USER: fintech
+#       POSTGRES_PASSWORD: fintech
+#       POSTGRES_DB: fintech
+#     ports:
+#       - "5432:5432"
+
+#   timescaledb:
+#     image: timescale/timescaledb:2.13.0-pg15
+#     environment:
+#       POSTGRES_USER: timescale
+#       POSTGRES_PASSWORD: timescale
+#       POSTGRES_DB: events
+#     ports:
+#       - "5433:5432"
+
+#   ingestion:
+#    build:
+#     context: ..
+#     dockerfile: docker/Dockerfile
+#     args:
+#       SERVICE_PATH: cmd/ingestion-service
+#    environment:
+#     SERVICE_NAME: ingestion-service
+#     HTTP_PORT: "8080"
+#     KAFKA_BROKERS: kafka:9092
+#     POSTGRES_DSN: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
+#    ports:
+#     - "8081:8080"
+#    depends_on:
+#     - kafka
+#     - postgres
+
+#   risk-engine:
+#     build:
+#       context: ..
+#       dockerfile: docker/Dockerfile
+#       args:
+#         SERVICE_PATH: cmd/risk-engine/cmd
+#     depends_on:
+#       - kafka
+#       - postgres
+#     environment:
+#       KAFKA_BROKERS: kafka:9092
+#       DB_URL: postgres://fintel:fintel@1234@136.112.194.90:5432/fintel?sslmode=disable
+
+#   timescale-writer:
+#     build:
+#       context: ..
+#       dockerfile: docker/Dockerfile
+#       args:
+#         SERVICE_PATH: cmd/timescale-writer/cmd/timescale-writer
+#     depends_on:
+#       - kafka
+#       - timescaledb
+#     environment:
+#       KAFKA_BROKERS: kafka:9092
+#       TS_DB_URL: xol0uccg7v.qvxigtxmhr.tsdb.cloud.timescale.com
+
+#   api-gateway:
+#     build:
+#       context: ..
+#       dockerfile: docker/Dockerfile
+#       args:
+#         SERVICE_PATH: cmd/api-gateway/cmd
+#     depends_on:
+#       - ingestion
+#     ports:
+#       - "8080:8080"
+version: "3.9"
+
+services:
+
+  zookeeper:
+    image: zookeeper:3.8
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: fintech
+      POSTGRES_PASSWORD: fintech
+      POSTGRES_DB: fintech
+    ports:
+      - "5432:5432"
+
+  timescaledb:
+    image: timescale/timescaledb:2.13.0-pg15
+    environment:
+      POSTGRES_USER: timescale
+      POSTGRES_PASSWORD: timescale
+      POSTGRES_DB: events
+    ports:
+      - "5433:5432"
+
+  ingestion:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/ingestion-service
+    environment:
+      SERVICE_NAME: ingestion-service
+      HTTP_PORT: "8080"
+      KAFKA_BROKERS: kafka:9092
+      POSTGRES_DSN: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
+    ports:
+      - "8081:8080"
+    depends_on:
+      - kafka
+      - postgres
+
+  risk-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/risk-engine/cmd
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      DB_URL: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
+
+  timescale-writer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/timescale-writer
+    depends_on:
+      - kafka
+      - timescaledb
+    environment:
+      SERVICE_NAME: timescale-writer
+      KAFKA_BROKERS: kafka:9092
+      POSTGRES_DSN: postgres://timescale:timescale@timescaledb:5432/events?sslmode=disable
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/api-gateway/cmd
+    depends_on:
+      - ingestion
+    ports:
+      - "8080:8080"
