@@ -1,0 +1,25 @@
+# Local environment files
+.env
+.env.*
+!.env.example
+docker/.env
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.out
+
+# Node/newman artifacts (if generated locally)
+node_modules/
+newman/

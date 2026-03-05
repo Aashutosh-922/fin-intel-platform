@@ -43,7 +43,6 @@
 // 	w.WriteHeader(http.StatusAccepted)
 // }
 
-
 // func (h *Handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 // 	id := chi.URLParam(r, "id")
 
@@ -73,10 +72,12 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func (h *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -96,10 +97,30 @@ func (h *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		http.Error(w, "invalid transaction id", http.StatusBadRequest)
+		return
+	}
 
-	tx, _ := h.repo.GetTransaction(id)
-	risk, _ := h.repo.GetRisk(id)
-	ai, _ := h.repo.GetExplanation(id)
+	tx, err := h.repo.GetTransaction(id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "transaction not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "failed to fetch transaction", http.StatusInternalServerError)
+		return
+	}
+	risk, err := h.repo.GetRisk(id)
+	if err != nil && err != sql.ErrNoRows {
+		http.Error(w, "failed to fetch risk", http.StatusInternalServerError)
+		return
+	}
+	ai, err := h.repo.GetExplanation(id)
+	if err != nil && err != sql.ErrNoRows {
+		http.Error(w, "failed to fetch explanation", http.StatusInternalServerError)
+		return
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":          tx.ID,
@@ -111,14 +132,18 @@ func (h *Handler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
-    id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		http.Error(w, "invalid transaction id", http.StatusBadRequest)
+		return
+	}
 
-    result, err := h.timelineSvc.GetTimeline(r.Context(), id)
-    if err != nil {
-        http.Error(w, "not found", http.StatusNotFound)
-        return
-    }
+	result, err := h.timelineSvc.GetTimeline(r.Context(), id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(result)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

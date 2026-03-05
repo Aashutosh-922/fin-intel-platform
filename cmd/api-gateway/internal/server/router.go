@@ -8,7 +8,6 @@ import (
 
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/handlers"
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/middleware"
-
 )
 
 func NewRouter(h *handlers.Handler) http.Handler {
@@ -18,6 +17,8 @@ func NewRouter(h *handlers.Handler) http.Handler {
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.Trace)
+	r.Use(middleware.NewRateLimit())
 
 	// 🔓 Public routes (NO AUTH)
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -43,6 +44,6 @@ func NewRouter(h *handlers.Handler) http.Handler {
 		r.With(middleware.RequireRole("ANALYST", "ADMIN")).
 			Post("/ai/query", h.AIQuery)
 	})
-	
+
 	return r
 }

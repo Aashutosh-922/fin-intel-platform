@@ -66,10 +66,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"fmt"
+	"net/http"
 
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/handlers"
+	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/middleware"
 )
 
 type IngestionClient struct {
@@ -99,6 +100,9 @@ func (c *IngestionClient) CreateTransaction(
 	)
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	if traceID := middleware.TraceIDFromContext(ctx); traceID != "" {
+		httpReq.Header.Set("X-Trace-ID", traceID)
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {

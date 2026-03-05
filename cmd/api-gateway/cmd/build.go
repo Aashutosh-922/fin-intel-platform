@@ -45,34 +45,45 @@
 package main
 
 import (
-	"net/http"
+	"database/sql"
 	"log"
-    "database/sql"
-    _ "github.com/lib/pq"
+	"net/http"
+	"os"
 
+	_ "github.com/lib/pq"
 
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/clients"
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/handlers"
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/repository"
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/api-gateway/internal/server"
 	timelineQuery "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/query"
-
 )
 
 func buildRouter() http.Handler {
 	ingestion := clients.NewIngestionClient("http://ingestion:8080")
-	repo := repository.NewReadOnlyRepo()
-	ai := clients.NewAIClient()
 
-	    // ---- Timescale DB ----
-		tsdb, err := sql.Open("postgres",
-        "postgres://timescale:timescale@timescaledb:5432/events?sslmode=disable")
-    if err != nil {
-        log.Fatal(err)
-    }
+	appDSN := os.Getenv("APP_POSTGRES_DSN")
+	if appDSN == "" {
+		appDSN = "postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable"
+	}
+	eventDSN := os.Getenv("EVENTS_POSTGRES_DSN")
+	if eventDSN == "" {
+		eventDSN = "postgres://timescale:timescale@timescaledb:5432/events?sslmode=disable"
+	}
 
-    timelineRepo := timelineQuery.NewRepository(tsdb)
-    timelineSvc := timelineQuery.NewService(timelineRepo)
+	appDB, err := sql.Open("postgres", appDSN)
+	if err != nil {
+		log.Fatal(err)
+	}
+	eventDB, err := sql.Open("postgres", eventDSN)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ai := clients.NewAIClient(eventDB)
+	repo := repository.NewReadOnlyRepo(appDB, eventDB)
+	timelineRepo := timelineQuery.NewRepository(eventDB)
+	timelineSvc := timelineQuery.NewService(timelineRepo)
 
 	h := handlers.NewHandler(ingestion, repo, ai, timelineSvc)
 

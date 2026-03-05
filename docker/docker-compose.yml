@@ -1,148 +1,144 @@
-# services:
-#   zookeeper:
-#     image: zookeeper:3.8
-#     ports:
-#       - "2181:2181"
-
-# kafka:
-#   image: confluentinc/cp-kafka:7.5.0
-#   depends_on:
-#       - zookeeper
-#   ports:
-#       - "9092:9092"
-#   environment:
-#   KAFKA_BROKER_ID: 1
-#   KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
-#   KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-#   KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-#   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-#   KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
-#   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-#   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-
-
-
-#   postgres:
-#     image: postgres:15
-#     environment:
-#       POSTGRES_USER: fintech
-#       POSTGRES_PASSWORD: fintech
-#       POSTGRES_DB: fintech
-#     ports:
-#       - "5432:5432"
-
-#   timescaledb:
-#     image: timescale/timescaledb:2.13.0-pg15
-#     environment:
-#       POSTGRES_USER: timescale
-#       POSTGRES_PASSWORD: timescale
-#       POSTGRES_DB: events
-#     ports:
-#       - "5433:5432"
-
-#   ingestion:
-#    build:
-#     context: ..
-#     dockerfile: docker/Dockerfile
-#     args:
-#       SERVICE_PATH: cmd/ingestion-service
-#    environment:
-#     SERVICE_NAME: ingestion-service
-#     HTTP_PORT: "8080"
-#     KAFKA_BROKERS: kafka:9092
-#     POSTGRES_DSN: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
-#    ports:
-#     - "8081:8080"
-#    depends_on:
-#     - kafka
-#     - postgres
-
-#   risk-engine:
-#     build:
-#       context: ..
-#       dockerfile: docker/Dockerfile
-#       args:
-#         SERVICE_PATH: cmd/risk-engine/cmd
-#     depends_on:
-#       - kafka
-#       - postgres
-#     environment:
-#       KAFKA_BROKERS: kafka:9092
-#       DB_URL: postgres://fintel:fintel@1234@136.112.194.90:5432/fintel?sslmode=disable
-
-#   timescale-writer:
-#     build:
-#       context: ..
-#       dockerfile: docker/Dockerfile
-#       args:
-#         SERVICE_PATH: cmd/timescale-writer/cmd/timescale-writer
-#     depends_on:
-#       - kafka
-#       - timescaledb
-#     environment:
-#       KAFKA_BROKERS: kafka:9092
-#       TS_DB_URL: xol0uccg7v.qvxigtxmhr.tsdb.cloud.timescale.com
-
-#   api-gateway:
-#     build:
-#       context: ..
-#       dockerfile: docker/Dockerfile
-#       args:
-#         SERVICE_PATH: cmd/api-gateway/cmd
-#     depends_on:
-#       - ingestion
-#     ports:
-#       - "8080:8080"
-version: "3.9"
-
 services:
 
   zookeeper:
     image: zookeeper:3.8
+    container_name: docker-zookeeper-1
     ports:
       - "2181:2181"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    container_name: docker-kafka-1
     depends_on:
       - zookeeper
     ports:
       - "9092:9092"
+      - "9999:9999"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 12
+      KAFKA_LOG_RETENTION_BYTES: 268435456
+      KAFKA_LOG_SEGMENT_BYTES: 67108864
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
 
+      KAFKA_JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: kafka
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: docker-kafka-init-1
+    depends_on:
+      - kafka
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        echo "Waiting for Kafka to be fully ready..."
+        until kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do
+          echo "Kafka not ready yet..."
+          sleep 5
+        done
+
+        echo "Kafka fully ready. Creating topics..."
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions-retry --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions-dlq --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic risk-decisions --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic ai-insights --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orders --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-cancel --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic trade-executed --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-snapshots --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-deltas --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic market-alerts --partitions 6 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic market-ticks --partitions 6 --replication-factor 1
+
+        echo "Applying retention policies for high-volume topics..."
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name market-ticks --alter --add-config retention.ms=21600000,retention.bytes=134217728
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name orderbook-deltas --alter --add-config retention.ms=21600000,retention.bytes=134217728
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name orderbook-snapshots --alter --add-config retention.ms=21600000,retention.bytes=134217728
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name trade-executed --alter --add-config retention.ms=43200000,retention.bytes=268435456
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name orders --alter --add-config retention.ms=43200000,retention.bytes=268435456
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name risk-decisions --alter --add-config retention.ms=43200000,retention.bytes=268435456
+
+        echo "Topics created successfully:"
+        kafka-topics --bootstrap-server kafka:29092 --list | sort
 
   postgres:
     image: postgres:15
+    container_name: docker-postgres-1
     environment:
       POSTGRES_USER: fintech
       POSTGRES_PASSWORD: fintech
       POSTGRES_DB: fintech
     ports:
       - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  
+  postgres-init:
+    image: postgres:15
+    container_name: docker-postgres-init-1
+    depends_on:
+      - postgres
+    volumes:
+      - ./db-init/postgres-init.sql:/init/postgres-init.sql:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        echo "Waiting for Postgres to be ready..."
+        until pg_isready -h postgres -p 5432 -U fintech; do
+          echo "Postgres not ready yet..."
+          sleep 2
+        done
+
+        echo "Running Postgres schema initialization..."
+        PGPASSWORD=fintech psql -h postgres -p 5432 -U fintech -d fintech -v ON_ERROR_STOP=1 -f /init/postgres-init.sql
 
   timescaledb:
     image: timescale/timescaledb:2.13.0-pg15
+    container_name: docker-timescaledb-1
     environment:
       POSTGRES_USER: timescale
       POSTGRES_PASSWORD: timescale
       POSTGRES_DB: events
     ports:
       - "5433:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+
+  timescaledb-init:
+    image: postgres:15
+    container_name: docker-timescaledb-init-1
+    depends_on:
+      - timescaledb
+    volumes:
+      - ./db-init/timescaledb-init.sql:/init/timescaledb-init.sql:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        echo "Waiting for TimescaleDB to be ready..."
+        until pg_isready -h timescaledb -p 5432 -U timescale; do
+          echo "TimescaleDB not ready yet..."
+          sleep 2
+        done
+
+        echo "Running TimescaleDB schema initialization..."
+        PGPASSWORD=timescale psql -h timescaledb -p 5432 -U timescale -d events -v ON_ERROR_STOP=1 -f /init/timescaledb-init.sql
 
   ingestion:
     build:
@@ -153,13 +149,15 @@ services:
     environment:
       SERVICE_NAME: ingestion-service
       HTTP_PORT: "8080"
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       POSTGRES_DSN: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
     ports:
       - "8081:8080"
     depends_on:
-      - kafka
-      - postgres
+      kafka-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
 
   risk-engine:
     build:
@@ -167,12 +165,14 @@ services:
       dockerfile: docker/Dockerfile
       args:
         SERVICE_PATH: cmd/risk-engine/cmd
-    depends_on:
-      - kafka
-      - postgres
     environment:
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       DB_URL: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
 
   timescale-writer:
     build:
@@ -180,13 +180,115 @@ services:
       dockerfile: docker/Dockerfile
       args:
         SERVICE_PATH: cmd/timescale-writer
-    depends_on:
-      - kafka
-      - timescaledb
     environment:
       SERVICE_NAME: timescale-writer
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       POSTGRES_DSN: postgres://timescale:timescale@timescaledb:5432/events?sslmode=disable
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      timescaledb-init:
+        condition: service_completed_successfully
+
+  order-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/order-service
+    environment:
+      KAFKA_BROKERS: kafka:29092
+    ports:
+      - "8082:8080"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  matching-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/matching-engine
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      ORDERBOOK_STATE_FILE: /var/lib/matching/orderbook-state.json
+    ports:
+      - "8090:8090"
+    volumes:
+      - matching-state:/var/lib/matching
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  portfolio-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/portfolio-service
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      POSTGRES_DSN: postgres://fintech:fintech@postgres:5432/fintech?sslmode=disable
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
+
+  volatility-ai:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/volatility-ai
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      HTTP_PORT: "8071"
+    ports:
+      - "8071:8071"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/ai-service
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      AI_MODE: "${AI_MODE:-hybrid}"
+      AI_PROVIDER: "${AI_PROVIDER:-gemini}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-1.5-flash}"
+      GEMINI_BASE_URL: "${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}"
+      GEMINI_TIMEOUT_MS: "${GEMINI_TIMEOUT_MS:-4000}"
+      GEMINI_MAX_RETRIES: "${GEMINI_MAX_RETRIES:-2}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4.1-mini}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_TIMEOUT_MS: "${OPENAI_TIMEOUT_MS:-4000}"
+      OPENAI_MAX_RETRIES: "${OPENAI_MAX_RETRIES:-2}"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  market-data-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        SERVICE_PATH: cmd/market-data-service
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      HTTP_PORT: "8070"
+    ports:
+      - "8070:8070"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
 
   api-gateway:
     build:
@@ -194,7 +296,56 @@ services:
       dockerfile: docker/Dockerfile
       args:
         SERVICE_PATH: cmd/api-gateway/cmd
-    depends_on:
-      - ingestion
     ports:
       - "8080:8080"
+    environment:
+      JWT_REQUIRED: "false"
+      JWT_SECRET: ""
+      RATE_LIMIT_RPS: "20"
+      RATE_LIMIT_BURST: "40"
+    depends_on:
+      - ingestion
+      - order-service
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-jmx-exporter
+    profiles: ["monitoring"]
+    depends_on:
+      - kafka
+    ports:
+      - "9108:9308"
+    command:
+      - "--kafka.server=kafka:29092"
+      - "--web.listen-address=:9308"
+      - "--group.filter=.*"
+      - "--topic.filter=.*"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    profiles: ["monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts.yml:/etc/prometheus/alerts.yml
+    depends_on:
+      - kafka-exporter
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    profiles: ["monitoring"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres-data:
+  timescale-data:
+  grafana-storage:
+  matching-state:

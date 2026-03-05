@@ -1,0 +1,21 @@
+groups:
+  - name: kafka-consumer-lag
+    rules:
+      - alert: HighConsumerLagCriticalTopics
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag{topic=~"risk-decisions|trade-executed|orders|orderbook-deltas"}) > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High consumer lag for critical Kafka topic"
+          description: "Consumer group {{ $labels.consumergroup }} has lag {{ $value }} on topic {{ $labels.topic }}."
+
+      - alert: VeryHighConsumerLagCriticalTopics
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag{topic=~"risk-decisions|trade-executed|orders|orderbook-deltas"}) > 500
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Very high consumer lag for critical Kafka topic"
+          description: "Consumer group {{ $labels.consumergroup }} has sustained lag {{ $value }} on topic {{ $labels.topic }}."
+

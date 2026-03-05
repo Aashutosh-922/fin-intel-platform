@@ -58,7 +58,6 @@
 //    ===== Handler =====
 // */
 
-
 // type Handler struct {
 // 	ingestionClient *clients.IngestionClient
 // 	Repo            ReadOnlyRepository
@@ -132,9 +131,9 @@
 package handlers
 
 import (
-"context"
+	"context"
 
-timelineQuery "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/query"
+	timelineQuery "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/query"
 )
 
 // ---------- Interfaces (DECLARE ONCE ONLY) ----------
@@ -160,11 +159,10 @@ type AIClient interface {
 // ---------- Handler ----------
 
 type Handler struct {
-	ingestion IngestionClient
-	repo      ReadOnlyRepository
-	ai        AIClient
+	ingestion   IngestionClient
+	repo        ReadOnlyRepository
+	ai          AIClient
 	timelineSvc *timelineQuery.Service
-
 }
 
 func NewHandler(
@@ -174,9 +172,9 @@ func NewHandler(
 	timelineSvc *timelineQuery.Service,
 ) *Handler {
 	return &Handler{
-		ingestion: ingestion,
-		repo:      repo,
-		ai:        ai,
+		ingestion:   ingestion,
+		repo:        repo,
+		ai:          ai,
 		timelineSvc: timelineSvc,
 	}
 }

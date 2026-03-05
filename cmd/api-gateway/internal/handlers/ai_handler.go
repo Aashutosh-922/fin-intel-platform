@@ -28,8 +28,11 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type AIRequest struct {
@@ -44,12 +47,20 @@ func (h *Handler) AIQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	if _, err := uuid.Parse(req.TransactionID); err != nil {
+		http.Error(w, "invalid transaction id", http.StatusBadRequest)
+		return
+	}
 
 	resp, err := h.ai.Query(r.Context(), AIQuery{
 		TransactionID: req.TransactionID,
 		Question:      req.Question,
 	})
 	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "ai insight not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -57,4 +68,3 @@ func (h *Handler) AIQuery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
-

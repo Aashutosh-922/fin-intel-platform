@@ -11,9 +11,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/Aashutosh-922/fin-intel-platform/internal/config"
+	events "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/application/events"
 	consumer "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/consumer"
 	timescale "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/infrastructure/timescale"
-	events "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/application/events"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup("timeline-group"),
-		kgo.ConsumeTopics("risk-decisions"),
+		kgo.ConsumeTopics("risk-decisions", "ai-insights"),
 	)
 	if err != nil {
 		log.Fatal(err)

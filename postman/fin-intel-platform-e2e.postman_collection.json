@@ -1,0 +1,380 @@
+{
+  "info": {
+    "name": "Fin Intel Platform E2E",
+    "_postman_id": "3d52865a-6da9-4ed6-8b17-3d5d5a12e8d1",
+    "description": "End-to-end flow checks for ingestion, risk, AI, order matching, portfolio, and volatility services.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:8080" },
+    { "key": "ingestionUrl", "value": "http://localhost:8081" },
+    { "key": "orderUrl", "value": "http://localhost:8082" },
+    { "key": "matchingUrl", "value": "http://localhost:8090" },
+    { "key": "marketDataUrl", "value": "http://localhost:8070" },
+    { "key": "marketDataWsUrl", "value": "ws://localhost:8070/ws/market" },
+    { "key": "volatilityUrl", "value": "http://localhost:8071" },
+    { "key": "authToken", "value": "test-token" },
+    { "key": "txnId", "value": "b69498d3-440c-49cf-b5e5-67e9bbeb5706" },
+    { "key": "orderBuyId", "value": "ord-buy-postman-seed" },
+    { "key": "orderSellId", "value": "ord-sell-postman-seed" }
+  ],
+  "item": [
+    {
+      "name": "01 Gateway Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/health"
+      }
+    },
+    {
+      "name": "02 Ingestion Health",
+      "request": {
+        "method": "GET",
+        "url": "{{ingestionUrl}}/health"
+      }
+    },
+    {
+      "name": "03 Order Service Health",
+      "request": {
+        "method": "GET",
+        "url": "{{orderUrl}}/health"
+      }
+    },
+    {
+      "name": "04 Create Transaction (Gateway -> Ingestion -> Kafka)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Role", "value": "USER" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"user-201\",\n  \"amount\": 9200.75,\n  \"currency\": \"USD\"\n}"
+        },
+        "url": "{{gatewayUrl}}/transactions"
+      }
+    },
+    {
+      "name": "05 Get Transaction (DB-backed)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.test('transaction response has id', function () {",
+              "  pm.expect(body.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Role", "value": "ANALYST" }
+        ],
+        "url": "{{gatewayUrl}}/transactions/{{txnId}}"
+      }
+    },
+    {
+      "name": "06 Get Timeline (Timescale-backed)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.test('timeline response has timeline array', function () {",
+              "  pm.expect(body).to.have.property('timeline');",
+              "  pm.expect(Array.isArray(body.timeline)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Role", "value": "ANALYST" }
+        ],
+        "url": "{{gatewayUrl}}/transactions/{{txnId}}/timeline"
+      }
+    },
+    {
+      "name": "07 AI Query (Gateway)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.test('ai response has text answer', function () {",
+              "  pm.expect(body.text).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Role", "value": "ANALYST" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transaction_id\": \"{{txnId}}\",\n  \"question\": \"why approved?\"\n}"
+        },
+        "url": "{{gatewayUrl}}/ai/query"
+      }
+    },
+    {
+      "name": "08 Place BUY Order",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const suffix = Date.now();",
+              "pm.collectionVariables.set('orderBuyId', `ord-buy-postman-${suffix}`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(202);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{orderBuyId}}\",\n  \"user_id\": \"user-buy-postman-1\",\n  \"symbol\": \"INFY\",\n  \"side\": \"BUY\",\n  \"type\": \"LIMIT\",\n  \"price\": 1500,\n  \"quantity\": 5\n}"
+        },
+        "url": "{{orderUrl}}/orders"
+      }
+    },
+    {
+      "name": "09 Place SELL Order (Triggers Match)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const suffix = Date.now();",
+              "pm.collectionVariables.set('orderSellId', `ord-sell-postman-${suffix}`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(202);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{orderSellId}}\",\n  \"user_id\": \"user-sell-postman-1\",\n  \"symbol\": \"INFY\",\n  \"side\": \"SELL\",\n  \"type\": \"LIMIT\",\n  \"price\": 1499,\n  \"quantity\": 5\n}"
+        },
+        "url": "{{orderUrl}}/orders"
+      }
+    },
+    {
+      "name": "10 Cancel Order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(202);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{orderUrl}}/orders/{{orderBuyId}}/cancel?symbol=INFY"
+      }
+    },
+    {
+      "name": "11 Orderbook Snapshot",
+      "request": {
+        "method": "GET",
+        "url": "{{matchingUrl}}/orderbook/INFY"
+      }
+    },
+    {
+      "name": "12 Volatility Health",
+      "request": {
+        "method": "GET",
+        "url": "{{volatilityUrl}}/health"
+      }
+    },
+    {
+      "name": "13 Volatility Alerts",
+      "request": {
+        "method": "GET",
+        "url": "{{volatilityUrl}}/alerts"
+      }
+    },
+    {
+      "name": "14 Market Data Health",
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    },
+    {
+      "name": "15 WS Market (All Streams) - Newman Compatibility",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const wsUrl = pm.variables.replaceIn('{{marketDataWsUrl}}');",
+              "pm.test('ws url uses ws/wss scheme', function () {",
+              "  pm.expect(/^wss?:\\/\\//.test(wsUrl)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    },
+    {
+      "name": "16 WS Market (INFY ticks only) - Newman Compatibility",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const wsUrl = pm.variables.replaceIn('{{marketDataWsUrl}}');",
+              "const infyTicksUrl = `${wsUrl}?symbols=INFY&topics=market-ticks`;",
+              "pm.collectionVariables.set('ws_infy_ticks_url', infyTicksUrl);",
+              "pm.test('infy ticks ws url is formed correctly', function () {",
+              "  pm.expect(infyTicksUrl).to.include('symbols=INFY');",
+              "  pm.expect(infyTicksUrl).to.include('topics=market-ticks');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    },
+    {
+      "name": "17 WS Market (Orderbook deltas INFY) - Newman Compatibility",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const wsUrl = pm.variables.replaceIn('{{marketDataWsUrl}}');",
+              "const orderbookUrl = `${wsUrl}?symbols=INFY&topics=orderbook-deltas`;",
+              "pm.collectionVariables.set('ws_orderbook_deltas_url', orderbookUrl);",
+              "pm.test('orderbook ws url is formed correctly', function () {",
+              "  pm.expect(orderbookUrl).to.include('symbols=INFY');",
+              "  pm.expect(orderbookUrl).to.include('topics=orderbook-deltas');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    },
+    {
+      "name": "18 WS Market (Volatility Alerts) - Newman Compatibility",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const wsUrl = pm.variables.replaceIn('{{marketDataWsUrl}}');",
+              "const alertsUrl = `${wsUrl}?topics=market-alerts`;",
+              "pm.collectionVariables.set('ws_market_alerts_url', alertsUrl);",
+              "pm.test('alerts ws url is formed correctly', function () {",
+              "  pm.expect(alertsUrl).to.include('topics=market-alerts');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    },
+    {
+      "name": "19 WS Market (Risk Rejections) - Newman Compatibility",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const wsUrl = pm.variables.replaceIn('{{marketDataWsUrl}}');",
+              "const rejectionsUrl = `${wsUrl}?topics=risk-rejections`;",
+              "pm.collectionVariables.set('ws_risk_rejections_url', rejectionsUrl);",
+              "pm.test('risk rejections ws url is formed correctly', function () {",
+              "  pm.expect(rejectionsUrl).to.include('topics=risk-rejections');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{marketDataUrl}}/health"
+      }
+    }
+  ]
+}

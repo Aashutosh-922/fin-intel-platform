@@ -3,9 +3,10 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"fmt"
-	
+	"log"
+	"time"
+
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/Aashutosh-922/fin-intel-platform/cmd/risk-engine/internal/domain/risk"
@@ -33,7 +34,7 @@ func New(
 			rules.AmountSpikeRule{},
 			rules.GeoMismatchRule{},
 			rules.VelocityRule{},
-		}),		
+		}),
 	}
 }
 
@@ -145,7 +146,6 @@ func (c *Consumer) Start(ctx context.Context) {
 //     log.Printf("risk evaluated: user=%s score=%d decision=%s",
 //     event.UserID, score, decision)
 
-
 // 	err := emitDecision(ctx, c.producer, event.EventID, score, decision)
 // 	if err != nil {
 // 		if retries < 3 {
@@ -158,8 +158,8 @@ func (c *Consumer) Start(ctx context.Context) {
 // 		return nil
 // 	}
 
-// 	return nil
-// }
+//		return nil
+//	}
 func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) error {
 	retries := getRetryCount(record)
 
@@ -208,7 +208,6 @@ func buildContext(event events.TransactionEvent) risk.Context {
 	}
 }
 
-
 func emitDecision(
 	ctx context.Context,
 	p *producer.Producer,
@@ -217,9 +216,12 @@ func emitDecision(
 	decision string,
 ) error {
 	return p.Publish(ctx, producer.RiskEvent{
+		EventID:       txID + "-" + decision,
 		TransactionID: txID,
 		RiskScore:     score,
 		Decision:      decision,
+		Flagged:       decision != "APPROVED",
+		CreatedAt:     time.Now().Unix(),
 	})
 }
 

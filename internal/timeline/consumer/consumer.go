@@ -54,7 +54,7 @@
 // 		Type:          decision.Decision,
 // 		Payload:       string(record.Value),
 // 		CreatedAt:     time.Now().UTC(),
-// 	})	
+// 	})
 
 // 	if err != nil {
 // 		log.Println("failed writing timeline:", err)
@@ -68,14 +68,20 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	events "github.com/Aashutosh-922/fin-intel-platform/internal/timeline/application/events"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type RiskDecision struct {
 	TransactionID string `json:"transaction_id"`
 	RiskScore     int    `json:"risk_score"`
 	Decision      string `json:"decision"`
+}
+
+type AIInsight struct {
+	TransactionID string  `json:"transaction_id"`
+	Verdict       string  `json:"verdict"`
+	Confidence    float64 `json:"confidence"`
 }
 
 type DecisionConsumer struct {
@@ -95,7 +101,14 @@ func (c *DecisionConsumer) Start(ctx context.Context) {
 		}
 
 		fetches.EachRecord(func(record *kgo.Record) {
-			c.handle(ctx, record)
+			switch record.Topic {
+			case "risk-decisions":
+				c.handleRiskRecord(ctx, record)
+			case "ai-insights":
+				c.handleAIRecord(ctx, record)
+			default:
+				log.Printf("ignoring unsupported topic %s", record.Topic)
+			}
 		})
 	}
 }
@@ -151,7 +164,7 @@ func (c *DecisionConsumer) Start(ctx context.Context) {
 // 	}
 // }
 
-func (c *DecisionConsumer) handle(ctx context.Context, record *kgo.Record) {
+func (c *DecisionConsumer) handleRiskRecord(ctx context.Context, record *kgo.Record) {
 	var decision RiskDecision
 
 	if err := json.Unmarshal(record.Value, &decision); err != nil {
@@ -169,5 +182,28 @@ func (c *DecisionConsumer) handle(ctx context.Context, record *kgo.Record) {
 
 	if err != nil {
 		log.Println("failed writing timeline:", err)
+	}
+}
+
+func (c *DecisionConsumer) handleAIRecord(ctx context.Context, record *kgo.Record) {
+	var insight AIInsight
+
+	if err := json.Unmarshal(record.Value, &insight); err != nil {
+		log.Println("invalid ai insight event")
+		return
+	}
+
+	if insight.TransactionID == "" {
+		log.Println("ai insight missing transaction_id")
+		return
+	}
+
+	err := c.service.Record(ctx, events.Event{
+		TransactionID: insight.TransactionID,
+		Type:          "AI_ANALYSIS",
+		Payload:       string(record.Value),
+	})
+	if err != nil {
+		log.Println("failed writing ai insight timeline:", err)
 	}
 }

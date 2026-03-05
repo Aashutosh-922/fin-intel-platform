@@ -18,9 +18,12 @@ func New(client *kgo.Client) *Producer {
 }
 
 type RiskEvent struct {
+	EventID       string `json:"event_id"`
 	TransactionID string `json:"transaction_id"`
 	RiskScore     int    `json:"risk_score"`
 	Decision      string `json:"decision"`
+	Flagged       bool   `json:"flagged"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 func (p *Producer) Publish(ctx context.Context, evt RiskEvent) error {
