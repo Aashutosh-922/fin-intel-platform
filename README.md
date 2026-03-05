@@ -110,7 +110,7 @@ Provider selection:
 
 Gemini envs (when using `hybrid` / `llm_only`):
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL` (default `gemini-1.5-flash`; `.env.example` currently sets `gemini-2.5-flash`)
+- `GEMINI_MODEL` (default `gemini-1.5-flash`)
 - `GEMINI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta`; root URL is auto-normalized to `/v1beta`)
 - `GEMINI_TIMEOUT_MS`
 - `GEMINI_MAX_RETRIES`
@@ -332,7 +332,7 @@ From `docker/`:
 cp .env.example .env
 ```
 
-Update `GEMINI_API_KEY` in `.env` if you want to override the default key in `docker/.env.example`.
+Set `GEMINI_API_KEY` in `.env` before starting if you want live Gemini calls.
 
 Then run:
 
